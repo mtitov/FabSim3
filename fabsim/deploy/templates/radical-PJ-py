@@ -1,27 +1,62 @@
-from radical.appscheduler.api.manager import Manager
-from radical.appscheduler.api.manager import LocalManager
-from radical.appscheduler.api.job import Jobs
 
-m = LocalManager(cfg={'log_level': 'DEBUG'}, server_args=['--log', 'debug'])
-# m = Manager(cfg={'log_level': 'DEBUG'}, server_args=['--log', 'debug'])
+import os
+from typing import List
+
+import radical.pilot as rp
+
+# prepare resource configuration (need to point to resource configs)
+os.system('mkdir -p ${radical_sandbox}/.radical/pilot/configs && '
+          'cd ${radical_sandbox} && cp resource_*.json .radical/pilot/configs/')
+os.environ['RADICAL_CONFIG_USER_DIR'] = WORK_DIR
+
+# for debug purposes
+os.environ['RADICAL_LOG_LVL'] = 'DEBUG'
+os.environ['RADICAL_REPORT']  = 'TRUE'
 
 
-# get available resources
-print("available resources:\n%s\n" % str(m.resources()))
+# convert hostname into RP style platform ID (i.e., platform label)
+def get_platform_ids(hostname:str) -> List[str]:
+    platform_cfgs = rp.utils.get_resource_configs()
+    facilities = list(platform_cfgs)
+    for skip_facility in ['debug', 'local']:
+        facilities.remove(skip_facility)
+    output = []
+    for facility in facilities:
+        for platform in platform_cfgs[facility]:
+            if platform.split('_')[0] in hostname:
+                output.append('%s.%s' % (facility, platform))
+        if output:
+            output.sort()
+            break
+    return output
 
-# submit jobs and save their names in 'ids' list
-jobs = Jobs()
 
-$submitted_jobs_list
+def main():
+    platform_ids = get_platform_ids('${resource}')
+    platform_id = 'local.localhost' if not platform_ids else platform_ids[0]
 
-ids = m.submit(jobs)
+    session = rp.Session()
+    pmgr    = rp.PilotManager(session=session)
+    tmgr    = rp.TaskManager(session=session)
 
-# wait until submited jobs finish
-m.wait4(ids)
+    pd_init = {
+        'resource' : platform_id,
+        'project'  : '${project}',
+        'queue'    : '${queue}',
+        'runtime'  : ${job_wall_time},
+        'nodes'    : ${nodes},
+        'sandbox'  : '${radical_sandbox}'
+    }
+    pilot = pmgr.submit_pilots(rp.PilotDescription(pd_init))
+    tmgr.add_pilots(pilot)
 
-# get detailed information about submited and finished jobs
-print("jobs details:\n%s\n" % str(m.info(ids)))
+# list of `radical-PJ-task-template`
+$submit_tasks
 
-m.finish()
-m.stopManager()
-m.cleanup()
+    tmgr.wait_tasks()
+    session.close(download=True)
+
+
+if __name__ == '__main__':
+    main()
+

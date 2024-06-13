@@ -1265,19 +1265,9 @@ def run_ensemble(
         submit_task_scripts = []
         if not hasattr(env, "task_model"):
             env.task_model = "default"
-            
-        # Define the resource mapping
-        resource_mapping = {
-            "localhost": "local.localhost",
-            "archer2": "epcc.archer2",
-            # Add other machine mappings as needed
-        }
 
-        # Set the default resource
-        default_resource = "local.localhost"
-
-        # Get the resource from the mapping
-        resource = resource_mapping.get(env.machine_name, default_resource)
+        # Set list of tasks (ensemble)
+        submit_tasks = []
 
         # Create arguments for radical task scripts
         for index, task_script in enumerate(task_scripts, start=1):
@@ -1285,22 +1275,31 @@ def run_ensemble(
             env.idsPath = task_script
             task_env = env.copy()
             task_env.update({
-                "task_name": f"task{index}",
-                "executable": task_script,
-                "resource": resource,
+                # pilot description
+                # (*) some parameters could be not redefined, but used
+                #     directly within the template.
+                "resource": env.machine_name,
                 "project": env.get("project", "default_project"),
                 "queue": env.get("queue", "default_queue"),
-                "runtime": env.get("runtime", 1),
-                "cores": env.cores,
-                "gpus": env.get("gpus", 0),
-                "sandbox": os.path.dirname(task_script),
-                "arguments": "",
-                "pre_exec": "",
+                "job_wall_time": env.get("job_wall_time", 1),
+                "nodes": env.nodes,
+                "radical_sandbox": os.path.dirname(task_script),
+                # task description
+                "task_name_prefix": f"task{index}",
+                "executable": task_script,
+                "arguments": [""],  # to be rechecked how lists should be
+                                    # provided
+                "pre_exec": [""],
                 "ranks": 1,
                 "cores_per_rank": 1,
                 "task_sandbox": os.path.join(os.path.dirname(task_script), f"task_{index}_sandbox")
             })
             env.update(task_env)  # Update env with task_env variables
+
+            submit_tasks.append(
+                script_template_content("radical-PJ-task-template")
+            )
+
             task_script_content = script_template_content("RP_PYheader")
             task_script_name = f"{env.config}_{env.machine_name}_{env.cores}_task_{index}.py"
             task_script_path = os.path.join(os.path.dirname(task_script), task_script_name)
@@ -1316,6 +1315,8 @@ def run_ensemble(
             # Collect the script path for the final job submission script
             submit_task_scripts.append(task_script_path)
 
+        env.submit_tasks = "\n".join(submit_tasks)
+
         # Make sure submit_task_scripts is a list of strings
         if isinstance(submit_task_scripts, str):
             submit_task_scripts = submit_task_scripts.split('\n')
@@ -1326,7 +1327,7 @@ def run_ensemble(
             RP_CMD.append("# Activate the virtual environment")
             RP_CMD.append(f"source {env.virtual_env_path}/bin/activate\n")
 
-        RP_CMD.append("# Install Radical PilotJob in user's home space")
+        RP_CMD.append("# Install RADICAL-Pilot in user's home space")
         RP_CMD.append("pip3 install --upgrade radical.pilot\n")
         for task_script in submit_task_scripts:
             RP_CMD.append("# Python command for task submission")

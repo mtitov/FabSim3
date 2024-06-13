@@ -1,1 +1,15 @@
-jobs.add(name = 'TaskID$idsID', exec = 'bash', args = ['-l','$idsPath'], stdout = 'tasks-log/$${jname}__$${uniq}.stdout', stderr = 'tasks-log/$${jname}__$${uniq}.stderr', numCores = { 'exact': $cores }, model = '$task_model') 
+
+    tds = []
+    for idx in range(${num_tasks}):
+        tds.append(rp.TaskDescription({
+            'name'           : '${task_name_prefix}.' + str(idx),
+            'executable'     : '${executable}',
+            'arguments'      : ${arguments},
+            'pre_exec'       : ${pre_exec},
+            'ranks'          : ${ranks},
+            'cores_per_rank' : ${cores_per_rank},
+            'sandbox'        : '${task_sandbox}'
+        }))
+    tmgr.submit_tasks(tds)
+    tmgr.wait_tasks()
+
